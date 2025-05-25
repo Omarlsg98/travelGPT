@@ -1,6 +1,18 @@
-# Tourist AI Agent
+# TravelGPT – Your Personalized AI Travel Planner
 
-This repository contains the boilerplate for the Tourist AI Agent application, designed for cloud deployment with automated installation and management.
+TravelGPT is a cloud-deployable AI agent that helps users plan personalized travel itineraries by the hour. It leverages a large language model (LLM) to create optimal schedules, budgets, and booking recommendations based on user preferences, time constraints, and budget.
+
+Key Features:
+
+- Hour-by-hour travel planning
+- Budget-aware itinerary generation
+- Real-time search for flights, hotels, and attractions
+- Personalized recommendations based on interests
+- Fully self-hosted and deployable in the user's cloud infrastructure
+
+Use Case: Ideal for travelers who want smart, automated planning with the flexibility and privacy of running it on their own cloud environment.
+
+
 
 ## Project Structure
 
