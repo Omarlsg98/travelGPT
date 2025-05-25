@@ -1,6 +1,6 @@
 import * as ExcelJS from 'exceljs';
 import * as fs from 'fs/promises';
-import { Activity, ExcelExporter, ScheduleParser } from './schedule-management';
+import { Activity, ExcelExporter, ScheduleParser } from '../src/schedule-management';
 
 // Mock ExcelJS and fs/promises for testing purposes
 jest.mock('exceljs');
