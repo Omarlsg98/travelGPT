@@ -23,9 +23,26 @@ export default function Home() {
     }
   };
 
-  const handleGenerateExcel = () => {
-    alert("Generating Excel file from schedule-management...");
-    // In a real application, this would trigger an API call to generate the Excel file.
+  const handleGenerateExcel = async () => {
+    try {
+      const response = await fetch("/agent/export-excel");
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "travel_schedule.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      alert("Excel file generated and downloaded!");
+    } catch (error) {
+      console.error("Failed to generate Excel file:", error);
+      alert("Failed to generate Excel file. Please try again.");
+    }
   };
 
   return (
@@ -57,7 +74,7 @@ export default function Home() {
               placeholder="Type your message..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => {
+              onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) => {
                 if (e.key === "Enter") {
                   handleSendMessage();
                 }

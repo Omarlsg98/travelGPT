@@ -6,7 +6,6 @@
 export interface Activity {
   initialDatetime: Date;
   finalDatetime: Date;
-  weekday: string;
   city: string;
   activityName: string;
   activityType: "Stay" | "Flight" | "Transportation" | "Attraction" | "Meal" | "Other";
@@ -83,7 +82,71 @@ export class ScheduleParser {
 }
 
 import * as ExcelJS from 'exceljs';
-import * as fs from 'fs/promises'; // For writing dummy files
+
+/**
+ * Generates fixed sample travel schedule data.
+ * @returns An array of sample Activity objects.
+ */
+export function generateFixedScheduleData(): Activity[] {
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  return [
+    {
+      initialDatetime: new Date(today.setHours(15, 0, 0, 0)),
+      finalDatetime: new Date(tomorrow.setHours(11, 0, 0, 0)),
+      city: "Paris",
+      activityName: "Hotel Stay",
+      activityType: "Stay",
+      price: 200,
+      providerCompany: "Hotel Parisian",
+      purchased: true,
+    },
+    {
+      initialDatetime: new Date(today.setHours(9, 0, 0, 0)),
+      finalDatetime: new Date(today.setHours(10, 0, 0, 0)),
+      city: "Paris",
+      activityName: "Eiffel Tower Visit",
+      activityType: "Attraction",
+      price: 25,
+      purchased: true,
+    },
+    {
+      initialDatetime: new Date(today.setHours(12, 0, 0, 0)),
+      finalDatetime: new Date(today.setHours(13, 0, 0, 0)),
+      city: "Paris",
+      activityName: "Lunch at Le Comptoir",
+      activityType: "Meal",
+      price: 50,
+      purchased: false,
+    },
+    {
+      initialDatetime: new Date(tomorrow.setHours(8, 0, 0, 0)),
+      finalDatetime: new Date(tomorrow.setHours(11, 0, 0, 0)),
+      city: "Paris",
+      activityName: "Flight to Rome",
+      activityType: "Flight",
+      price: 120,
+      providerCompany: "Air France",
+      purchased: true,
+      extraFields: {
+        flightNumber: "AF123",
+        baggageIncluded: true,
+      },
+    },
+    {
+      initialDatetime: new Date(tomorrow.setHours(14, 0, 0, 0)),
+      finalDatetime: new Date(tomorrow.setHours(18, 0, 0, 0)),
+      city: "Rome",
+      activityName: "Colosseum Tour",
+      activityType: "Attraction",
+      price: 30,
+      purchased: false,
+      extraDetails: "Includes skip-the-line access",
+    },
+  ];
+}
 
 /**
  * Exports travel activities to Excel in various formats.
@@ -91,17 +154,21 @@ import * as fs from 'fs/promises'; // For writing dummy files
  */
 export class ExcelExporter {
   /**
-   * Exports a list of activities to an Excel file.
+   * Adds a worksheet with a list of activities to an existing workbook.
+   * @param workbook The ExcelJS Workbook object.
    * @param activities An array of Activity objects.
-   * @param filename The name of the Excel file to create (e.g., "travel_list.xlsx").
-   * @returns A promise that resolves when the file is written.
    */
-  public async exportActivitiesAsList(activities: Activity[], filename: string): Promise<void> {
-    console.log(`Exporting activities as list to ${filename}`);
-    const workbook = new ExcelJS.Workbook();
+  public addActivitiesAsListWorksheet(workbook: ExcelJS.Workbook, activities: Activity[]): void {
     const worksheet = workbook.addWorksheet("Activities List");
 
-    worksheet.columns = [
+    const extraFieldKeys = new Set<string>();
+    activities.forEach(activity => {
+      if (activity.extraFields) {
+        Object.keys(activity.extraFields).forEach(key => extraFieldKeys.add(key));
+      }
+    });
+
+    const columns: Partial<ExcelJS.Column>[] = [
       { header: "Initial Datetime", key: "initialDatetime", width: 20 },
       { header: "Final Datetime", key: "finalDatetime", width: 20 },
       { header: "Weekday", key: "weekday", width: 15 },
@@ -110,37 +177,46 @@ export class ExcelExporter {
       { header: "Activity Type", key: "activityType", width: 20 },
       { header: "Price", key: "price", width: 10 },
       { header: "Provider", key: "providerCompany", width: 20 },
-      { header: "Link", key: "linkToBuy", width: 40 },
+      { header: "Extra Details", key: "extraDetails", width: 30 },
       { header: "Purchased", key: "purchased", width: 15 },
+      { header: "Link to Buy", key: "linkToBuy", width: 30 },
     ];
 
-    activities.forEach((activity) => {
-      worksheet.addRow({
-        ...activity,
-        initialDatetime: activity.initialDatetime.toISOString(),
-        finalDatetime: activity.finalDatetime.toISOString(),
-      });
+    // Add dynamic columns for extraFields
+    Array.from(extraFieldKeys).sort().forEach(key => {
+      columns.push({ header: `Extra: ${key}`, key: `extraFields.${key}`, width: 20 });
     });
 
-    // For demonstration, write to a dummy text file instead of actual Excel
-    // In a real scenario, you would use: await workbook.xlsx.writeFile(filename);
-    const dummyContent = await workbook.xlsx.writeBuffer();
-    await fs.writeFile(filename, dummyContent as any); // Cast to any to bypass TypeScript error
+    worksheet.columns = columns;
 
-    console.log(`Excel list exported to dummy file: ${filename}`);
+    activities.forEach((activity) => {
+      const rowData: Record<string, any> = {
+        ...activity,
+        weekday: activity.initialDatetime.toLocaleDateString('en-US', { weekday: 'long' }),
+        initialDatetime: activity.initialDatetime.toISOString(),
+        finalDatetime: activity.finalDatetime.toISOString(),
+      };
+
+      // Flatten extraFields into rowData for ExcelJS
+      if (activity.extraFields) {
+        for (const key in activity.extraFields) {
+          rowData[`extraFields.${key}`] = activity.extraFields[key];
+        }
+      }
+
+      worksheet.addRow(rowData);
+    });
+    console.log(`Activities list worksheet added.`);
   }
 
   /**
-   * Exports activities to an Excel file formatted as a calendar.
+   * Adds a worksheet with activities formatted as a calendar to an existing workbook.
    * "Stay" activities span across days at the top. Other activities are marked
    * with colors and joined cells hour by hour and day by day.
+   * @param workbook The ExcelJS Workbook object.
    * @param activities An array of Activity objects.
-   * @param filename The name of the Excel file to create (e.g., "travel_calendar.xlsx").
-   * @returns A promise that resolves when the file is written.
    */
-  public async exportActivitiesAsCalendar(activities: Activity[], filename: string): Promise<void> {
-    console.log(`Exporting activities as calendar to ${filename}`);
-    const workbook = new ExcelJS.Workbook();
+  public addActivitiesAsCalendarWorksheet(workbook: ExcelJS.Workbook, activities: Activity[]): void {
     const worksheet = workbook.addWorksheet("Travel Calendar");
 
     // Determine date range
@@ -182,7 +258,7 @@ export class ExcelExporter {
 
         // Add a new row for the stay activity at the top
         const stayRow = worksheet.insertRow(2, {}); // Insert after header and time row
-        stayRow.getCell(startCol).value = stay.activityName;
+        stayRow.getCell(startCol).value = `${stay.city}, ${stay.providerCompany || 'N/A'}`;
         worksheet.mergeCells(stayRow.number, startCol, stayRow.number, endCol);
         stayRow.getCell(startCol).fill = {
           type: 'pattern',
@@ -218,12 +294,22 @@ export class ExcelExporter {
         }
       }
     });
+    console.log(`Activities calendar worksheet added.`);
+  }
 
-    // For demonstration, write to a dummy text file instead of actual Excel
-    const dummyContent = await workbook.xlsx.writeBuffer();
-    await fs.writeFile(filename, dummyContent as any);
-
-    console.log(`Excel calendar exported to dummy file: ${filename}`);
+  /**
+   * Exports all views (list and calendar) to a single Excel file with different tabs.
+   * @param activities An array of Activity objects.
+   * @returns A promise that resolves with the Excel file buffer.
+   */
+  public async exportCombinedExcel(activities: Activity[]): Promise<Buffer> {
+    console.log(`Exporting combined Excel file...`);
+    const workbook = new ExcelJS.Workbook();
+    this.addActivitiesAsListWorksheet(workbook, activities);
+    this.addActivitiesAsCalendarWorksheet(workbook, activities);
+    const buffer = await workbook.xlsx.writeBuffer();
+    console.log(`Combined Excel file exported.`);
+    return buffer as Buffer;
   }
 
   private getActivityColor(activityType: Activity['activityType']): string {
