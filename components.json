@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "app/web/globals.css",
+    "baseColor": "stone",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "aliases": {
+    "components": "@travelgpt/packages/ui/src/shadcn",
+    "utils": "@travelgpt/packages/ui/src/shadcn/lib/utils",
+    "ui": "@travelgpt/packages/ui/src/shadcn/ui",
+    "lib": "@travelgpt/packages/ui/src/shadcn/lib",
+    "hooks": "@travelgpt/packages/ui/src/shadcn/hooks"
+  },
+  "iconLibrary": "lucide"
+}
