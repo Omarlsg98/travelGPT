@@ -21,5 +21,9 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "description": "An AI-powered tourist assistant agent.",
+  "repository":"https://github.com/omarlsg98/tourist-ai-agent.git",
+  "author": "Omar Sanchez (@Omarlsg98)",
+  "license": "MIT"
 }
