@@ -1,32 +1,66 @@
 // packages/core/src/agent-logic.ts
 
+import { z } from "zod";
 import { APIConnection } from "./api-connections";
 import { FeasibilityCalculator } from "./feasibility";
-import { LLMConnection } from "./llm-connections";
+import { ILLMProvider, LLMConnectionBuilder, LLMProviderConfig } from "./llm-connections";
+import { Activity, ScheduleParser } from "./schedule-management";
+
+const activitySchema = z.object({
+  initialDatetime: z.string(),
+  finalDatetime: z.string(),
+  city: z.string(),
+  activityName: z.string(),
+  activityType: z.enum(["Stay", "Flight", "Transportation", "Attraction", "Meal", "Other"]),
+  price: z.union([z.number(), z.null()]).optional(),
+  providerCompany: z.union([z.string(), z.null()]).optional(),
+  extraDetails: z.union([z.string(), z.null()]).optional(),
+  extraFields: z.union([
+    z.array(z.object({
+      key: z.string(),
+      value: z.string(),
+    })),
+    z.null(),
+  ]).optional(),
+  linkToBuy: z.union([z.string(), z.null()]).optional(),
+  purchased: z.boolean(),
+});
+
+const responseSchema = z.object({
+  conversation: z.string(),
+  travelDetails: z.object({
+    destination: z.string(),
+    startDate: z.string(),
+    endDate: z.string(),
+    days: z.number(),
+  }),
+  schedule: z.array(activitySchema),
+});
 
 /**
  * Represents the core LLM agent logic, responsible for orchestrating LLM interactions,
  * tool utilization (APIs, feasibility), and decision-making for travel planning.
  */
 export class TravelAgent {
-  private llmConnection: LLMConnection;
+  private llmConnection: ILLMProvider;
   private apiConnection: APIConnection;
   private feasibilityCalculator: FeasibilityCalculator;
-  private llmClient: any; // The connected LLM client
+  private scheduleParser: ScheduleParser;
+  private currentSchedule: Activity[] = []; // Stores the iteratively built schedule
 
-  constructor(llmConfig: any, apiConfig: any) {
-    this.llmConnection = new LLMConnection(llmConfig);
+  constructor(llmConfig: LLMProviderConfig, apiConfig: any) {
+    this.llmConnection = LLMConnectionBuilder.build(llmConfig);
     this.apiConnection = new APIConnection(apiConfig);
     this.feasibilityCalculator = new FeasibilityCalculator(this.apiConnection);
+    this.scheduleParser = new ScheduleParser();
   }
 
   /**
    * Initializes the agent by connecting to the primary LLM.
-   * @param llmName The name of the LLM to use (e.g., "OpenAI").
+   * The LLM connection is established during construction via LLMConnectionBuilder.
    */
-  public async initialize(llmName: string): Promise<void> {
-    this.llmClient = await this.llmConnection.connect(llmName);
-    console.log(`Travel Agent initialized with ${llmName}.`);
+  public async initialize(): Promise<void> {
+    console.log(`Travel Agent initialized.`);
   }
 
   /**
@@ -37,49 +71,137 @@ export class TravelAgent {
   public async generateTravelPlan(query: string): Promise<any> {
     console.log(`Generating travel plan for query: "${query}"`);
 
-    // Step 1: Use LLM to understand the query and identify necessary tools/information
-    const initialLLMResponse = await this.llmConnection.getResponse(
-      this.llmClient,
-      `Analyze this travel query and suggest initial steps, including any information needed or tools to use: "${query}"`
-    );
-    console.log("Initial LLM analysis:", initialLLMResponse);
+    // Initial prompt to the LLM to extract details and generate the first schedule
+    const initialPrompt = `You are a helpful travel agent. The user's request is: "${query}".
+    
+    Please respond conversationally, acknowledging the request and confirming the extracted travel details (destination, start date, end date, number of days).
+    
+    Then, propose an initial travel schedule focusing on "Stay" activities first (e.g., hotel bookings) with no given provider or 'TBD'.
+    
+    Your entire response MUST be a single JSON object with the provided structure. 
 
-    // Step 2: Utilize tools based on LLM's suggestion (example: calculate travel time)
-    // This part would involve more sophisticated parsing of LLM's response to determine tool usage.
-    if (query.toLowerCase().includes("travel time")) {
-      const originMatch = query.match(/from\s+([^,]+)/i);
-      const destinationMatch = query.match(/to\s+([^,]+)/i);
+    Ensure all dates in the schedule are in ISO 8601 format. Provide only the JSON object, no other text.`;
 
-      if (originMatch && destinationMatch) {
-        const origin = originMatch[1].trim();
-        const destination = destinationMatch[1].trim();
-        try {
-          const travelTime = await this.feasibilityCalculator.calculateTravelTime(origin, destination);
-          console.log(`Calculated travel time from ${origin} to ${destination}: ${travelTime} minutes.`);
-          // Feed this information back to the LLM for further planning
-          const refinedLLMResponse = await this.llmConnection.getResponse(
-            this.llmClient,
-            `Based on the query "${query}" and calculated travel time of ${travelTime} minutes from ${origin} to ${destination}, refine the travel plan.`
-          );
-          return { plan: refinedLLMResponse, travelTime: travelTime };
-        } catch (error) {
-          console.error("Failed to calculate travel time:", error);
-          // Inform LLM about the failure
-          await this.llmConnection.getResponse(
-            this.llmClient,
-            `Attempted to calculate travel time for "${query}" but failed. Please adjust the plan accordingly.`
-          );
-        }
+    let parsedInitialResponse: z.infer<typeof responseSchema>;
+
+    try {
+      parsedInitialResponse = await this.llmConnection.sendChatReturnJSON(
+        initialPrompt,
+        [], // No prior messages for the initial prompt
+        responseSchema
+      );
+      console.log("Initial LLM Raw Response:", JSON.stringify(parsedInitialResponse, null, 2));
+
+      // Validate the parsed structure
+      if (!parsedInitialResponse.conversation || !parsedInitialResponse.travelDetails || !parsedInitialResponse.schedule) {
+        throw new Error("LLM initial response missing required fields (conversation, travelDetails, or schedule).");
       }
+
+      this.currentSchedule = this.scheduleParser.parseSchedule(JSON.stringify(parsedInitialResponse.schedule));
+      console.log("Initial Schedule from LLM:", JSON.stringify(this.currentSchedule, null, 2));
+
+    } catch (error) {
+      console.error(`Error parsing initial LLM response: ${error}`);
+      return { plan: `Failed to generate initial plan due to LLM response format error: ${error}` };
     }
 
-    // Step 3: Use LLM to synthesize information and generate the final plan
-    const finalPlan = await this.llmConnection.getResponse(
-      this.llmClient,
-      `Based on all gathered information, generate a comprehensive travel plan for: "${query}"`
-    );
+    // // Now, iteratively build and refine the schedule
+    // const finalSchedule = await this.buildIterativeSchedule(parsedInitialResponse.travelDetails);
 
-    return { plan: finalPlan };
+    return {
+      conversation: parsedInitialResponse.conversation,
+      travelDetails: parsedInitialResponse.travelDetails,
+      plan: this.currentSchedule
+    };
+  }
+
+  /**
+   * Iteratively builds and refines the travel schedule.
+   * @param travelDetails Initial travel details from the user.
+   * @returns A promise that resolves with the final generated schedule.
+   */
+  public async buildIterativeSchedule(travelDetails: { destination: string; startDate: string; endDate: string; days: number }): Promise<Activity[]> {
+    let currentIteration = 0;
+    const maxIterations = 5; // Limit iterations to prevent infinite loops
+
+    // The prompt for subsequent iterations will assume the LLM only returns the JSON array of activities.
+    let iterationBasePrompt = `You are a travel agent. The user wants to travel to ${travelDetails.destination} from ${travelDetails.startDate} to ${travelDetails.endDate} for ${Number(travelDetails.days)} days.`;
+    iterationBasePrompt += `
+    
+  Your task is to refine and complete the travel schedule. Continue by adding "Transportation", "Attraction", or "Meal" activities, ensuring logical flow and covering the entire travel duration.
+  Focus on first adding stay (without defining specifc provider), and trasportation without defining specific provider. From there start making concrete suggestion for stay places, 
+  times the user wants to spend in a given place, transportation and time it takes to get there, and so on.
+  
+  Ask when you need more information, suggest everything you think the user will appreciate, and ensure your response is a valid JSON object with the following structure:
+
+  \`\`\`json
+    {
+      "conversation": "Your conversational response here.",
+      "travelDetails": {
+        "destination": "string",
+        "startDate": "YYYY-MM-DD",
+        "endDate": "YYYY-MM-DD",
+        "days": "number"
+      },
+      "schedule": [
+        {
+          "initialDatetime": "YYYY-MM-DDTHH:MM:SSZ",
+          "finalDatetime": "YYYY-MM-DDTHH:MM:SSZ",
+          "city": "string",
+          "activityName": "string",
+          "activityType": "Stay" | "Flight" | "Transportation" | "Attraction" | "Meal" | "Other",
+          "price": "number (optional)",
+          "providerCompany": "string (optional)",
+          "extraDetails": "string (optional)",
+          "extraFields": "Record<string, any> (optional)",
+          "linkToBuy": "string (optional)",
+          "purchased": "boolean"
+        }
+      ]
+    }
+    \`\`\`
+    Ensure all dates in the schedule are in ISO 8601 format. Provide only the JSON object, no other text.`;
+
+
+    while (currentIteration < maxIterations) {
+      console.log(`\n--- Schedule Building Iteration ${currentIteration + 1} ---`);
+      console.log("Current Schedule:", JSON.stringify(this.currentSchedule, null, 2));
+
+      const currentScheduleJson = JSON.stringify(this.currentSchedule, null, 2);
+      const iterationPrompt = `${iterationBasePrompt}\n\nHere is the current schedule: \n${currentScheduleJson}\n\nBased on the user's request and the current schedule, propose the next set of activities or the final complete schedule.`;
+
+      let parsedIterationResponse: z.infer<typeof responseSchema>;
+      try {
+        parsedIterationResponse = await this.llmConnection.sendChatReturnJSON(
+          iterationPrompt,
+          [], // No prior messages for this iteration, the prompt contains the full context
+          responseSchema
+        );
+        console.log("LLM Raw Response (Iteration):", JSON.stringify(parsedIterationResponse, null, 2));
+
+        const newActivities = this.scheduleParser.parseSchedule(JSON.stringify(parsedIterationResponse.schedule));
+
+        // Simple check for completion: if LLM returns the same schedule or no new activities
+        if (JSON.stringify(newActivities) === currentScheduleJson) {
+          console.log("LLM returned the same schedule. Assuming completion.");
+          break;
+        }
+
+        this.currentSchedule = newActivities; // Update the schedule with the LLM's latest proposal
+        console.log("Updated Schedule:", JSON.stringify(this.currentSchedule, null, 2));
+
+      } catch (error) {
+        console.error(`Error in LLM interaction or parsing schedule in iteration: ${error}`);
+        // Refine the prompt to guide the LLM to correct its output
+        iterationBasePrompt += `\n\nPrevious attempt failed due to invalid JSON format or parsing error: ${error}. Please ensure your response is a valid JSON array of activities, and nothing else.`;
+      }
+
+      currentIteration++;
+    }
+
+    console.log("\n--- Final Schedule ---");
+    console.log(JSON.stringify(this.currentSchedule, null, 2));
+    return this.currentSchedule;
   }
 
   /**

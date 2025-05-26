@@ -1,25 +1,71 @@
 "use client";
 
+import { Activity } from "@travelgpt/packages/core/src";
 import { Button } from "@travelgpt/packages/ui/src/shadcn/ui/button";
 import { Card, CardContent, CardFooter } from "@travelgpt/packages/ui/src/shadcn/ui/card";
 import { Input } from "@travelgpt/packages/ui/src/shadcn/ui/input";
 import { useState } from "react";
 
 export default function Home() {
-  const [messages, setMessages] = useState<{ text: string; sender: "user" | "agent" }[]>([]);
+  const [messages, setMessages] = useState<{ text: string; sender: "user" | "agent" }[]>([
+    { text: "Welcome to the Travel Agent! Tell me about your travel plans.", sender: "agent" }
+  ]);
   const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [plan , setPlan] = useState<Activity[]>([]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (input.trim()) {
-      setMessages([...messages, { text: input, sender: "user" }]);
+      const userMessage = input;
+      setMessages((prevMessages) => [...prevMessages, { text: userMessage, sender: "user" }]);
       setInput("");
-      // Simulate agent response
-      setTimeout(() => {
+
+      try {
+        setLoading(true);
+
+        const response = await fetch("/agent/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ query: userMessage }),
+        });
+
+        if (!response.ok) {
+          setLoading(false);
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("Agent Response Data:", data);
+
+        // Assuming the agent's conversational response is in data.conversation
+        if (data.conversation) {
+          setMessages((prevMessages) => [
+            ...prevMessages,
+            { text: data.conversation, sender: "agent" },
+          ]);
+        } else {
+          setMessages((prevMessages) => [
+            ...prevMessages,
+            { text: "Agent responded, but no conversational message found.", sender: "agent" },
+          ]);
+        }
+
+        // Assuming the agent's travel plan is in data.plan
+        if (data.plan && Array.isArray(data.plan)) {
+          setPlan(data.plan);
+        } else {
+          console.warn("No valid travel plan found in agent response.");
+        }
+
+      } catch (error) {
+        console.error("Failed to send message to agent:", error);
         setMessages((prevMessages) => [
           ...prevMessages,
-          { text: "Hello! How can I help you with your travel plans?", sender: "agent" },
+          { text: `Error: Failed to get response from agent. ${error instanceof Error ? error.message : String(error)}`, sender: "agent" },
         ]);
-      }, 500);
+      }
     }
   };
 
