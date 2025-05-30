@@ -3,6 +3,7 @@ const SYSTEM_PROMPT = async (query: string): Promise<string> => {
   return `You are a helpful travel agent. The user's request is: "${query}".
 
         You should justify in conversation every decision or change you make in the plan. Avoid answering back with the same the user just said.
+        Conversation field inside the JSON should be markdown easy for the user to digest.
         If you propose a city why do you propose that city, why is it fun or interesting to go there?
 
         Try to suggest plans while gathering information from the user, such as preferences (more cultural activities, nightlife, old/young or families, chill, or crazy, etc.) and constraints (time, mobility, etc.).

@@ -2,8 +2,8 @@
 
 import { Activity } from "@travelgpt/packages/core/src";
 import { Button } from "@travelgpt/packages/ui/src/shadcn/ui/button";
-import { Input } from "@travelgpt/packages/ui/src/shadcn/ui/input";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void }) {
   const [chatVisible, setChatVisible] = useState(true);
@@ -12,6 +12,14 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
 
   const handleSendMessage = async () => {
     if (input.trim()) {
@@ -100,7 +108,7 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
 
       {/* Chat panel (left) */}
       {chatVisible && (
-        <div className="w-full max-w-2xl h-[80vh] flex flex-col">
+        <div className="w-full max-w-2xl h-[80vh] flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow-lg">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((msg, index) => (
               <div
@@ -113,7 +121,7 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
                     : "bg-gray-300 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
                     }`}
                 >
-                  {msg.text}
+                  <ReactMarkdown>{msg.text}</ReactMarkdown>
                 </div>
               </div>
             ))}
@@ -124,19 +132,22 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
                 </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
           <div className="flex flex-col gap-2 p-4 border-t">
             <div className="flex w-full space-x-2">
-              <Input
+              <textarea
                 placeholder="Type your message..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === "Enter") {
+                onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
                     handleSendMessage();
                   }
                 }}
-                className="flex-1 rounded border border-gray-300 dark:border-gray-700 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="flex-1 rounded border border-gray-300 dark:border-gray-700 px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                rows={3}
               />
               <Button onClick={handleSendMessage} disabled={loading}>
                 {loading ? (
