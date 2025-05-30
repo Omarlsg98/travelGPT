@@ -3,27 +3,41 @@
 import { z } from "zod";
 import { APIConnection } from "./api-connections";
 import { FeasibilityCalculator } from "./feasibility";
-import { ILLMProvider, LLMConnectionBuilder, LLMProviderConfig } from "./llm-connections";
+import {
+  ILLMProvider,
+  LLMConnectionBuilder,
+  LLMProviderConfig,
+} from "./llm-connections";
 import { SYSTEM_PROMPT } from "./prompts";
 import { Activity, ScheduleParser } from "./schedule-management";
-
 
 const activitySchema = z.object({
   initialDatetime: z.string(),
   finalDatetime: z.string(),
   city: z.string(),
   activityName: z.string(),
-  activityType: z.enum(["Stay", "Flight", "Transportation", "Attraction", "Meal", "Other"]),
+  activityType: z.enum([
+    "Stay",
+    "Flight",
+    "Transportation",
+    "Attraction",
+    "Meal",
+    "Other",
+  ]),
   price: z.union([z.number(), z.null()]).optional(),
   providerCompany: z.union([z.string(), z.null()]).optional(),
   extraDetails: z.union([z.string(), z.null()]).optional(),
-  extraFields: z.union([
-    z.array(z.object({
-      key: z.string(),
-      value: z.string(),
-    })),
-    z.null(),
-  ]).optional(),
+  extraFields: z
+    .union([
+      z.array(
+        z.object({
+          key: z.string(),
+          value: z.string(),
+        })
+      ),
+      z.null(),
+    ])
+    .optional(),
   linkToBuy: z.union([z.string(), z.null()]).optional(),
   purchased: z.boolean(),
 });
@@ -70,31 +84,48 @@ export class TravelAgent {
    * @param query The user's travel query.
    * @returns A promise that resolves with the generated travel plan.
    */
-  public async generateTravelPlan(query: string): Promise<any> {
+  public async generateTravelPlan(query: string): Promise<{
+    conversation: string;
+    travelDetails: {
+      destination: string;
+      startDate: string;
+      endDate: string;
+      days: number;
+    };
+    plan: Activity[];
+  }> {
     console.log(`Generating travel plan for query: "${query}"`);
 
     let parsedInitialResponse: z.infer<typeof responseSchema>;
 
-    try {
-      parsedInitialResponse = await this.llmConnection.sendChatReturnJSON(
-        await SYSTEM_PROMPT(query),
-        [], // No prior messages for the initial prompt
-        responseSchema
+    parsedInitialResponse = await this.llmConnection.sendChatReturnJSON(
+      await SYSTEM_PROMPT(query),
+      [], // No prior messages for the initial prompt
+      responseSchema
+    );
+    console.log(
+      "Initial LLM Raw Response:",
+      JSON.stringify(parsedInitialResponse, null, 2)
+    );
+
+    // Validate the parsed structure
+    if (
+      !parsedInitialResponse.conversation ||
+      !parsedInitialResponse.travelDetails ||
+      !parsedInitialResponse.schedule
+    ) {
+      throw new Error(
+        "LLM initial response missing required fields (conversation, travelDetails, or schedule)."
       );
-      console.log("Initial LLM Raw Response:", JSON.stringify(parsedInitialResponse, null, 2));
-
-      // Validate the parsed structure
-      if (!parsedInitialResponse.conversation || !parsedInitialResponse.travelDetails || !parsedInitialResponse.schedule) {
-        throw new Error("LLM initial response missing required fields (conversation, travelDetails, or schedule).");
-      }
-
-      this.currentSchedule = this.scheduleParser.parseSchedule(JSON.stringify(parsedInitialResponse.schedule));
-      console.log("Initial Schedule from LLM:", JSON.stringify(this.currentSchedule, null, 2));
-
-    } catch (error) {
-      console.error(`Error parsing initial LLM response: ${error}`);
-      return { plan: `Failed to generate initial plan due to LLM response format error: ${error}` };
     }
+
+    this.currentSchedule = this.scheduleParser.parseSchedule(
+      JSON.stringify(parsedInitialResponse.schedule)
+    );
+    console.log(
+      "Initial Schedule from LLM:",
+      JSON.stringify(this.currentSchedule, null, 2)
+    );
 
     // // Now, iteratively build and refine the schedule
     // const finalSchedule = await this.buildIterativeSchedule(parsedInitialResponse.travelDetails);
@@ -102,7 +133,7 @@ export class TravelAgent {
     return {
       conversation: parsedInitialResponse.conversation,
       travelDetails: parsedInitialResponse.travelDetails,
-      plan: this.currentSchedule
+      plan: this.currentSchedule,
     };
   }
 
@@ -111,12 +142,21 @@ export class TravelAgent {
    * @param travelDetails Initial travel details from the user.
    * @returns A promise that resolves with the final generated schedule.
    */
-  public async buildIterativeSchedule(travelDetails: { destination: string; startDate: string; endDate: string; days: number }): Promise<Activity[]> {
+  public async buildIterativeSchedule(travelDetails: {
+    destination: string;
+    startDate: string;
+    endDate: string;
+    days: number;
+  }): Promise<Activity[]> {
     let currentIteration = 0;
     const maxIterations = 5; // Limit iterations to prevent infinite loops
 
     // The prompt for subsequent iterations will assume the LLM only returns the JSON array of activities.
-    let iterationBasePrompt = `You are a travel agent. The user wants to travel to ${travelDetails.destination} from ${travelDetails.startDate} to ${travelDetails.endDate} for ${Number(travelDetails.days)} days.`;
+    let iterationBasePrompt = `You are a travel agent. The user wants to travel to ${
+      travelDetails.destination
+    } from ${travelDetails.startDate} to ${travelDetails.endDate} for ${Number(
+      travelDetails.days
+    )} days.`;
     iterationBasePrompt += `
     
   Your task is to refine and complete the travel schedule. Continue by adding "Transportation", "Attraction", or "Meal" activities, ensuring logical flow and covering the entire travel duration.
@@ -153,10 +193,14 @@ export class TravelAgent {
     \`\`\`
     Ensure all dates in the schedule are in ISO 8601 format. Provide only the JSON object, no other text.`;
 
-
     while (currentIteration < maxIterations) {
-      console.log(`\n--- Schedule Building Iteration ${currentIteration + 1} ---`);
-      console.log("Current Schedule:", JSON.stringify(this.currentSchedule, null, 2));
+      console.log(
+        `\n--- Schedule Building Iteration ${currentIteration + 1} ---`
+      );
+      console.log(
+        "Current Schedule:",
+        JSON.stringify(this.currentSchedule, null, 2)
+      );
 
       const currentScheduleJson = JSON.stringify(this.currentSchedule, null, 2);
       const iterationPrompt = `${iterationBasePrompt}\n\nHere is the current schedule: \n${currentScheduleJson}\n\nBased on the user's request and the current schedule, propose the next set of activities or the final complete schedule.`;
@@ -168,9 +212,14 @@ export class TravelAgent {
           [], // No prior messages for this iteration, the prompt contains the full context
           responseSchema
         );
-        console.log("LLM Raw Response (Iteration):", JSON.stringify(parsedIterationResponse, null, 2));
+        console.log(
+          "LLM Raw Response (Iteration):",
+          JSON.stringify(parsedIterationResponse, null, 2)
+        );
 
-        const newActivities = this.scheduleParser.parseSchedule(JSON.stringify(parsedIterationResponse.schedule));
+        const newActivities = this.scheduleParser.parseSchedule(
+          JSON.stringify(parsedIterationResponse.schedule)
+        );
 
         // Simple check for completion: if LLM returns the same schedule or no new activities
         if (JSON.stringify(newActivities) === currentScheduleJson) {
@@ -179,10 +228,14 @@ export class TravelAgent {
         }
 
         this.currentSchedule = newActivities; // Update the schedule with the LLM's latest proposal
-        console.log("Updated Schedule:", JSON.stringify(this.currentSchedule, null, 2));
-
+        console.log(
+          "Updated Schedule:",
+          JSON.stringify(this.currentSchedule, null, 2)
+        );
       } catch (error) {
-        console.error(`Error in LLM interaction or parsing schedule in iteration: ${error}`);
+        console.error(
+          `Error in LLM interaction or parsing schedule in iteration: ${error}`
+        );
         // Refine the prompt to guide the LLM to correct its output
         iterationBasePrompt += `\n\nPrevious attempt failed due to invalid JSON format or parsing error: ${error}. Please ensure your response is a valid JSON array of activities, and nothing else.`;
       }
@@ -202,7 +255,11 @@ export class TravelAgent {
    * @param params Parameters for the API call.
    * @returns A promise that resolves with the API response.
    */
-  public async useExternalApi(apiName: string, endpoint: string, params: any): Promise<any> {
+  public async useExternalApi(
+    apiName: string,
+    endpoint: string,
+    params: any
+  ): Promise<any> {
     return this.apiConnection.callApi(apiName, endpoint, params);
   }
 
@@ -213,7 +270,11 @@ export class TravelAgent {
    * @param args Arguments for the tool.
    * @returns A promise that resolves with the MCP tool's result.
    */
-  public async useMcpTool(serverName: string, toolName: string, args: any): Promise<any> {
+  public async useMcpTool(
+    serverName: string,
+    toolName: string,
+    args: any
+  ): Promise<any> {
     return this.apiConnection.useMcpTool(serverName, toolName, args);
   }
 }

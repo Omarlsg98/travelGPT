@@ -1,5 +1,7 @@
 version: '3.8'
 
+name: travelgpt_infra
+
 services:
   postgres:
     image: postgres:15
