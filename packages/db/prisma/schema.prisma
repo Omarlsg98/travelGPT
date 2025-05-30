@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-ts"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  user_id     String    @id @default(uuid())
+  name        String
+  summary     String?
+  preferences String?
+  messages    Message[]
+  plans       Plan[]
+}
+
+model Message {
+  id           String   @id @default(uuid())
+  time         DateTime
+  user         User     @relation(fields: [user_id], references: [user_id])
+  user_id      String
+  message      String
+  message_type String
+  sender       String
+  plan         Plan?    @relation(fields: [plan_id], references: [id], name: "PlanMessages")
+  plan_id      String?
+}
+
+model Plan {
+  id                String    @id @default(uuid())
+  user              User      @relation(fields: [user_id], references: [user_id])
+  user_id           String
+  timeCreation      DateTime
+  version_number    Int
+  message_id_created String
+  context           String?
+  summary_of_plan   String?
+  messages          Message[] @relation("PlanMessages")
+  activities        Activity[]
+}
+
+model Activity {
+  id              String   @id @default(uuid())
+  plan            Plan     @relation(fields: [plan_id], references: [id])
+  plan_id         String
+  initialDatetime DateTime
+  finalDatetime   DateTime
+  city            String
+  activityName    String
+  activityType    String
+  price           Float?
+  providerCompany String?
+  extraDetails    String?
+  extraFields     Json?
+  linkToBuy       String?
+  purchased       Boolean
+}
