@@ -4,7 +4,9 @@ import { z } from "zod";
 import { APIConnection } from "./api-connections";
 import { FeasibilityCalculator } from "./feasibility";
 import { ILLMProvider, LLMConnectionBuilder, LLMProviderConfig } from "./llm-connections";
+import { SYSTEM_PROMPT } from "./prompts";
 import { Activity, ScheduleParser } from "./schedule-management";
+
 
 const activitySchema = z.object({
   initialDatetime: z.string(),
@@ -71,22 +73,11 @@ export class TravelAgent {
   public async generateTravelPlan(query: string): Promise<any> {
     console.log(`Generating travel plan for query: "${query}"`);
 
-    // Initial prompt to the LLM to extract details and generate the first schedule
-    const initialPrompt = `You are a helpful travel agent. The user's request is: "${query}".
-    
-    Please respond conversationally, acknowledging the request and confirming the extracted travel details (destination, start date, end date, number of days).
-    
-    Then, propose an initial travel schedule focusing on "Stay" activities first (e.g., hotel bookings) with no given provider or 'TBD'.
-    
-    Your entire response MUST be a single JSON object with the provided structure. 
-
-    Ensure all dates in the schedule are in ISO 8601 format. Provide only the JSON object, no other text.`;
-
     let parsedInitialResponse: z.infer<typeof responseSchema>;
 
     try {
       parsedInitialResponse = await this.llmConnection.sendChatReturnJSON(
-        initialPrompt,
+        await SYSTEM_PROMPT(query),
         [], // No prior messages for the initial prompt
         responseSchema
       );

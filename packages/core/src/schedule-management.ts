@@ -83,70 +83,6 @@ export class ScheduleParser {
 
 import * as ExcelJS from 'exceljs';
 
-/**
- * Generates fixed sample travel schedule data.
- * @returns An array of sample Activity objects.
- */
-export function generateFixedScheduleData(): Activity[] {
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  return [
-    {
-      initialDatetime: new Date(today.setHours(15, 0, 0, 0)),
-      finalDatetime: new Date(tomorrow.setHours(11, 0, 0, 0)),
-      city: "Paris",
-      activityName: "Hotel Stay",
-      activityType: "Stay",
-      price: 200,
-      providerCompany: "Hotel Parisian",
-      purchased: true,
-    },
-    {
-      initialDatetime: new Date(today.setHours(9, 0, 0, 0)),
-      finalDatetime: new Date(today.setHours(10, 0, 0, 0)),
-      city: "Paris",
-      activityName: "Eiffel Tower Visit",
-      activityType: "Attraction",
-      price: 25,
-      purchased: true,
-    },
-    {
-      initialDatetime: new Date(today.setHours(12, 0, 0, 0)),
-      finalDatetime: new Date(today.setHours(13, 0, 0, 0)),
-      city: "Paris",
-      activityName: "Lunch at Le Comptoir",
-      activityType: "Meal",
-      price: 50,
-      purchased: false,
-    },
-    {
-      initialDatetime: new Date(tomorrow.setHours(8, 0, 0, 0)),
-      finalDatetime: new Date(tomorrow.setHours(11, 0, 0, 0)),
-      city: "Paris",
-      activityName: "Flight to Rome",
-      activityType: "Flight",
-      price: 120,
-      providerCompany: "Air France",
-      purchased: true,
-      extraFields: {
-        flightNumber: "AF123",
-        baggageIncluded: true,
-      },
-    },
-    {
-      initialDatetime: new Date(tomorrow.setHours(14, 0, 0, 0)),
-      finalDatetime: new Date(tomorrow.setHours(18, 0, 0, 0)),
-      city: "Rome",
-      activityName: "Colosseum Tour",
-      activityType: "Attraction",
-      price: 30,
-      purchased: false,
-      extraDetails: "Includes skip-the-line access",
-    },
-  ];
-}
 
 /**
  * Exports travel activities to Excel in various formats.
@@ -299,7 +235,7 @@ export class ExcelExporter {
 
   /**
    * Exports all views (list and calendar) to a single Excel file with different tabs.
-   * @param activities An array of Activity objects.
+   * @param activities An array of Activity objects to be exported.
    * @returns A promise that resolves with the Excel file buffer.
    */
   public async exportCombinedExcel(activities: Activity[]): Promise<Buffer> {
