@@ -5,11 +5,20 @@ import { Button } from "@travelgpt/packages/ui/src/shadcn/ui/button";
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
-export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void }) {
+interface ChatInterfaceProps {
+  setPlan: (plan: Activity[]) => void;
+  messages?: { text: string; sender: "user" | "agent" }[];
+  setMessages?: React.Dispatch<
+    React.SetStateAction<{ text: string; sender: "user" | "agent" }[]>
+  >;
+}
+
+export function ChatInterface({
+  setPlan,
+  messages = [],
+  setMessages = () => {},
+}: ChatInterfaceProps) {
   const [chatVisible, setChatVisible] = useState(true);
-  const [messages, setMessages] = useState<{ text: string; sender: "user" | "agent" }[]>([
-    { text: "Welcome to the Travel Agent! Tell me about your travel plans.", sender: "agent" }
-  ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,7 +33,10 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
   const handleSendMessage = async () => {
     if (input.trim()) {
       const userMessage = input;
-      setMessages((prevMessages) => [...prevMessages, { text: userMessage, sender: "user" }]);
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { text: userMessage, sender: "user" },
+      ]);
       setInput("");
 
       try {
@@ -55,7 +67,10 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
         } else {
           setMessages((prevMessages) => [
             ...prevMessages,
-            { text: "Agent responded, but no conversational message found.", sender: "agent" },
+            {
+              text: "Agent responded, but no conversational message found.",
+              sender: "agent",
+            },
           ]);
         }
 
@@ -64,7 +79,12 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
         console.error("Failed to send message to agent:", error);
         setMessages((prevMessages) => [
           ...prevMessages,
-          { text: `Error: Failed to get response from agent. ${error instanceof Error ? error.message : String(error)}`, sender: "agent" },
+          {
+            text: `Error: Failed to get response from agent. ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            sender: "agent",
+          },
         ]);
       }
     }
@@ -89,7 +109,11 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
               stroke="currentColor"
               strokeWidth={2}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           ) : (
             <svg
@@ -100,7 +124,11 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
               stroke="currentColor"
               strokeWidth={2}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 5l7 7-7 7"
+              />
             </svg>
           )}
         </button>
@@ -113,13 +141,16 @@ export function ChatInterface({ setPlan }: { setPlan: (plan: Activity[]) => void
             {messages.map((msg, index) => (
               <div
                 key={index}
-                className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex ${
+                  msg.sender === "user" ? "justify-end" : "justify-start"
+                }`}
               >
                 <div
-                  className={`max-w-[70%] p-3 rounded-lg ${msg.sender === "user"
-                    ? "bg-blue-500 text-white"
-                    : "bg-gray-300 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
-                    }`}
+                  className={`max-w-[70%] p-3 rounded-lg ${
+                    msg.sender === "user"
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-300 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                  }`}
                 >
                   <ReactMarkdown>{msg.text}</ReactMarkdown>
                 </div>

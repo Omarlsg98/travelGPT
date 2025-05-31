@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       data: {
         time: new Date(),
         user_id: user.user_id,
-        message: JSON.stringify(travelPlan.conversation),
+        message: travelPlan.conversation,
         message_type: "outgoing",
         sender: "agent",
       },
