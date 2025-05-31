@@ -113,7 +113,7 @@ export function CalendarView({ activities }: { activities: Activity[] }) {
   });
 
   return (
-    <table className="min-w-full border border-gray-300 dark:border-gray-700 table-fixed text-xs">
+    <table className="min-w-max border border-gray-300 dark:border-gray-700 table-fixed text-xs">
       <thead>
         <tr>
           <th className="border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-700 sticky top-0 z-10 w-16">
@@ -122,7 +122,7 @@ export function CalendarView({ activities }: { activities: Activity[] }) {
           {days.map((day) => (
             <th
               key={day.toISOString()}
-              className="border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-700 sticky top-0 z-10"
+              className="border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-700 sticky top-0 z-10 w-32"
               title={day.toLocaleDateString()}
             >
               {day.toLocaleDateString("en-US", {
@@ -435,7 +435,7 @@ export function InteractionInterface({ plan, setPlan }: IProps) {
 
   return (
     <div
-      className={`w-full max-w-2xl h-[80vh] flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow p-4 transition-all duration-300`}
+      className={`w-full h-[80vh] flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow p-4 transition-all duration-300`}
     >
       {/* Toggle */}
       <div className="flex justify-end mb-4">
@@ -466,7 +466,9 @@ export function InteractionInterface({ plan, setPlan }: IProps) {
             listColumns={listColumns}
           />
         ) : (
-          <CalendarView activities={planWithDates} />
+          <div className="overflow-x-auto">
+            <CalendarView activities={planWithDates} />
+          </div>
         )}
       </div>
       <div className="mt-4">
