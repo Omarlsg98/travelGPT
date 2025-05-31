@@ -89,25 +89,39 @@ export function CalendarView({ activities }: { activities: Activity[] }) {
   };
 
   // Build a map for quick lookup of activities by day and hour
-  const activityMap: Record<string, Record<number, Activity | null>> = {};
+  const activityMap: Record<string, Record<number, Activity[]>> = {};
   days.forEach((day) => {
     const dayKey = day.toISOString().split("T")[0];
     activityMap[dayKey] = {};
     hours.forEach((hour) => {
-      activityMap[dayKey][hour] = null;
+      activityMap[dayKey][hour] = [];
     });
   });
 
   otherActivities.forEach((activity) => {
-    const startDayKey = activity.initialDatetime.toISOString().split("T")[0];
-    const endDayKey = activity.finalDatetime.toISOString().split("T")[0];
-    const startHour = activity.initialDatetime.getHours();
-    const endHour = activity.finalDatetime.getHours();
+    const startDate = new Date(activity.initialDatetime);
+    const endDate = new Date(activity.finalDatetime);
 
-    // Only map activities that start and end on the same day for simplicity
-    if (startDayKey === endDayKey && activityMap[startDayKey]) {
-      for (let h = startHour; h <= endHour; h++) {
-        activityMap[startDayKey][h] = activity;
+    for (
+      let d = new Date(startDate);
+      d <= endDate;
+      d.setDate(d.getDate() + 1)
+    ) {
+      const dayKey = d.toISOString().split("T")[0];
+      if (!activityMap[dayKey]) continue;
+
+      let dayStartHour = 0;
+      let dayEndHour = 23;
+
+      if (d.toDateString() === startDate.toDateString()) {
+        dayStartHour = startDate.getHours();
+      }
+      if (d.toDateString() === endDate.toDateString()) {
+        dayEndHour = endDate.getHours();
+      }
+
+      for (let h = dayStartHour; h <= dayEndHour; h++) {
+        activityMap[dayKey][h].push(activity);
       }
     }
   });
@@ -220,31 +234,75 @@ export function CalendarView({ activities }: { activities: Activity[] }) {
             </td>
             {days.map((day) => {
               const dayKey = day.toISOString().split("T")[0];
-              const activity = activityMap[dayKey]?.[hour];
-              if (activity) {
-                // Check if this is the first hour cell for this activity to render merged cells
-                const startHour = activity.initialDatetime.getHours();
-                const endHour = activity.finalDatetime.getHours();
-                const startDayKey = activity.initialDatetime
-                  .toISOString()
-                  .split("T")[0];
-                if (dayKey === startDayKey && hour === startHour) {
-                  const colSpan = 1;
-                  const rowSpan = endHour - startHour + 1;
-                  return (
-                    <td
-                      key={dayKey + hour}
-                      rowSpan={rowSpan}
-                      className={`${getActivityColor(
-                        activity.activityType
-                      )} border border-gray-300 dark:border-gray-700 text-center align-middle`}
-                      title={`${activity.activityName} (${activity.city})`}
-                    >
-                      {activity.activityName}
-                    </td>
-                  );
-                }
-                return null; // skip cells merged by rowspan
+              const activities = activityMap[dayKey]?.[hour];
+              if (activities && activities.length > 0) {
+                return (
+                  <td
+                    key={dayKey + hour}
+                    className="border border-gray-300 dark:border-gray-700 align-top p-0 relative"
+                    title={activities
+                      .map((a) => `${a.activityName} (${a.city})`)
+                      .join(", ")}
+                  >
+                    {activities.map((activity, idx) => {
+                      // Render each activity stacked vertically with correct rowspan per day
+                      const startDate = new Date(activity.initialDatetime);
+                      const endDate = new Date(activity.finalDatetime);
+
+                      let rowSpan = 0;
+                      if (
+                        dayKey === startDate.toISOString().split("T")[0] &&
+                        hour === startDate.getHours()
+                      ) {
+                        // Activity starts this day and hour
+                        if (dayKey === endDate.toISOString().split("T")[0]) {
+                          // Activity ends same day
+                          rowSpan =
+                            endDate.getHours() - startDate.getHours() + 1;
+                        } else {
+                          // Activity spans multiple days, rowspan till end of day
+                          rowSpan = 24 - startDate.getHours();
+                        }
+                      } else if (
+                        dayKey !== startDate.toISOString().split("T")[0] &&
+                        dayKey !== endDate.toISOString().split("T")[0] &&
+                        hour === 0
+                      ) {
+                        // Intermediate full day
+                        rowSpan = 24;
+                      } else if (
+                        dayKey === endDate.toISOString().split("T")[0] &&
+                        hour === 0
+                      ) {
+                        // Last day partial
+                        rowSpan = endDate.getHours() + 1;
+                      }
+
+                      if (rowSpan > 0) {
+                        return (
+                          <div
+                            key={idx}
+                            style={{
+                              height: `${rowSpan * 16}px`, // 16px per row, adjust as needed
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              width: "100%",
+                              zIndex: 1,
+                              pointerEvents: "auto",
+                            }}
+                            className={`${getActivityColor(
+                              activity.activityType
+                            )} border border-gray-300 dark:border-gray-700 text-center text-xs m-0.5 p-0.5 rounded overflow-hidden`}
+                          >
+                            {activity.activityName}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </td>
+                );
               }
               return (
                 <td
