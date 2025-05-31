@@ -51,6 +51,9 @@ export function CalendarView({ activities }: { activities: Activity[] }) {
 
   // Render Stay activities as merged cells at top
   const stayActivities = activities.filter((a) => a.activityType === "Stay");
+  stayActivities.sort(
+    (a, b) => a.initialDatetime.getTime() - b.initialDatetime.getTime()
+  );
 
   // Render other activities by hour and day
   const otherActivities = activities.filter((a) => a.activityType !== "Stay");
@@ -60,6 +63,30 @@ export function CalendarView({ activities }: { activities: Activity[] }) {
     d1.getFullYear() === d2.getFullYear() &&
     d1.getMonth() === d2.getMonth() &&
     d1.getDate() === d2.getDate();
+
+  const getDayDate = (date: Date): Date => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0); // Normalize to start of day
+    return d;
+  };
+
+  // Returns the maximum number of overlapping Stay activities for any day (number)
+  const getMaxOverlappingStays = (activities: Activity[]): number => {
+    const stayCounts: Record<string, number> = {};
+    activities.forEach((activity) => {
+      if (activity.activityType === "Stay") {
+        for (
+          let d = new Date(activity.initialDatetime);
+          d <= activity.finalDatetime;
+          d.setDate(d.getDate() + 1)
+        ) {
+          const key = d.toISOString().split("T")[0];
+          stayCounts[key] = (stayCounts[key] || 0) + 1;
+        }
+      }
+    });
+    return Math.max(0, ...Object.values(stayCounts)) + 1;
+  };
 
   // Build a map for quick lookup of activities by day and hour
   const activityMap: Record<string, Record<number, Activity | null>> = {};
@@ -107,47 +134,83 @@ export function CalendarView({ activities }: { activities: Activity[] }) {
           ))}
         </tr>
         {/* Stay activities row */}
-        {stayActivities.length > 0 && (
-          <tr>
-            <td className="border border-gray-300 dark:border-gray-700 bg-purple-100 dark:bg-purple-700 font-semibold">
-              Stay
-            </td>
-            {days.map((day, idx) => {
-              // Check if any stay activity covers this day
-              const stay = stayActivities.find(
-                (a) => a.initialDatetime <= day && a.finalDatetime >= day
-              );
-              if (stay) {
-                // Calculate span of days for this stay
-                const startIdx = days.findIndex((d) =>
-                  isSameDay(d, stay.initialDatetime)
-                );
-                const endIdx = days.findIndex((d) =>
-                  isSameDay(d, stay.finalDatetime)
-                );
-                const colSpan = endIdx - startIdx + 1;
-                if (idx === startIdx) {
+        {stayActivities.length > 0 &&
+          Array.from({
+            length: getMaxOverlappingStays(stayActivities),
+          }).map((_, rowIdx) => (
+            <tr key={`stay-row-${rowIdx}`}>
+              {stayActivities.length > 0 && rowIdx === 0 && (
+                <td
+                  className="border border-gray-300 dark:border-gray-700 bg-purple-100 dark:bg-purple-700 font-semibold"
+                  rowSpan={getMaxOverlappingStays(stayActivities)}
+                >
+                  Stays
+                </td>
+              )}
+              {days.map((day, dayIdx) => {
+                // Pick the stay for this row (using modulo)
+                // Get all stays for this row by striding stayActivities with step getMaxOverlappingStays
+                const staysForThisRow = [];
+                for (
+                  let i = rowIdx;
+                  i < stayActivities.length;
+                  i += getMaxOverlappingStays(stayActivities)
+                ) {
+                  staysForThisRow.push(stayActivities[i]);
+                }
+                if (staysForThisRow.length === 0) {
+                  return (
+                    <td
+                      key={day.toISOString()}
+                      className="border border-gray-300 dark:border-gray-700"
+                    ></td>
+                  );
+                }
+                // Filter stays covering this day
+                const stay = staysForThisRow.filter(
+                  (a) =>
+                    getDayDate(a.initialDatetime) <= day &&
+                    getDayDate(a.finalDatetime) >= day
+                )[0];
+                // Only render if this stay hasn't already been rendered for this day in a previous cell
+                if (stay) {
+                  // Find all days this stay covers
+                  const startIdx = days.findIndex((d) =>
+                    isSameDay(d, stay.initialDatetime)
+                  );
+                  const endIdx = days.findIndex((d) =>
+                    isSameDay(d, stay.finalDatetime)
+                  );
+                  const colSpan = endIdx - startIdx + 1;
+                  // Only render at the start day for this stay and this row
+                  if (getDayDate(stay.initialDatetime) < day) {
+                    return null; // Skip rendering this cell
+                  }
                   return (
                     <td
                       key={day.toISOString()}
                       colSpan={colSpan}
+                      rowSpan={1}
                       className="border border-gray-300 dark:border-gray-700 bg-purple-300 dark:bg-purple-600 text-center font-semibold"
                     >
-                      {stay.city}, {stay.providerCompany ?? "TBD"}
+                      {`${stay.city}${
+                        stay.providerCompany
+                          ? `, ${stay.providerCompany}`
+                          : ", TBD"
+                      }`}
                     </td>
                   );
                 }
-                return null; // skip cells covered by colspan
-              }
-              return (
-                <td
-                  key={day.toISOString()}
-                  className="border border-gray-300 dark:border-gray-700"
-                ></td>
-              );
-            })}
-          </tr>
-        )}
+                // No stay for this row/day
+                return (
+                  <td
+                    key={day.toISOString()}
+                    className="border border-gray-300 dark:border-gray-700"
+                  ></td>
+                );
+              })}
+            </tr>
+          ))}
       </thead>
       <tbody>
         {hours.map((hour) => (
@@ -247,6 +310,20 @@ export function ListView({
                         return new Date(
                           activity.finalDatetime
                         ).toLocaleString();
+                      case "totalTime":
+                        const start = new Date(activity.initialDatetime);
+                        const end = new Date(activity.finalDatetime);
+                        const diff = end.getTime() - start.getTime();
+                        const totalMinutes = Math.floor(diff / (1000 * 60));
+                        const days = Math.floor(totalMinutes / (60 * 24));
+                        const hours = Math.floor(
+                          (totalMinutes % (60 * 24)) / 60
+                        );
+                        const minutes = totalMinutes % 60;
+                        if (days > 0) {
+                          return `${days}d`;
+                        }
+                        return `${hours}h`;
                       case "weekday":
                         return new Date(
                           activity.initialDatetime
@@ -293,14 +370,13 @@ interface IProps {
   setPlan: (plan: Activity[]) => void;
 }
 
-export function InteractionInterface(
-  { plan, setPlan }: IProps
-) {
+export function InteractionInterface({ plan, setPlan }: IProps) {
   const [planView, setPlanView] = useState<"list" | "calendar">("list");
 
   const listColumns = [
     { header: "Initial Datetime", key: "initialDatetime" },
     { header: "Final Datetime", key: "finalDatetime" },
+    { header: "Time Elapsed", key: "totalTime" },
     { header: "Weekday", key: "weekday" },
     { header: "City", key: "city" },
     { header: "Activity Name", key: "activityName" },
